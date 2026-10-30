@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "dataset": "scifact",
+  "seed": 42,
+  "normalization": "title-body-v1",
+  "sources": [
+    {
+      "url": "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/scifact.zip",
+      "sha256": "536e14446a0ba56ed1398ab1055f39fe852686ecad24a6306c80c490fa8e0165",
+      "split": "train/test",
+      "license": {
+        "abstracts": "original publisher rights",
+        "annotations": "CC-BY-NC-2.0"
+      }
+    }
+  ],
+  "scope": "BEIR",
+  "files": {
+    "corpus.jsonl": "a709af1800e845f0c26cec7550aaef9b6eb230c29648cf0d8a129309cc6cf447",
+    "labels.test.jsonl": "0f3a65785686737a6620381b82250020e2bed77d55073b525d0238aeded1423f",
+    "labels.train.jsonl": "6f7f91e6f2da0af8a4544feac1f3ad6dc438ed9944cacf0d9d5ea13bee640fc1"
+  },
+  "document_ids_sha256": "37f90fa1e2ad54da518fa1dfa64daf80f4e6a3f30a1040f504e8bcaf992c7cef",
+  "counts": {
+    "documents": 5183,
+    "train": 809,
+    "test": 300
+  }
+}

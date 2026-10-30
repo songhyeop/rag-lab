@@ -1,0 +1,14 @@
+{
+  "ImageUri": "YOUR_ECR_REPOSITORY@sha256:VERIFIED_CI_IMAGE_DIGEST",
+  "IndexBucket": "PINNED_INDEX_BUCKET",
+  "GoogleClientId": "",
+  "InvitedEmails": "[]",
+  "CorsOrigin": "https://YOUR_CLOUDFRONT_DOMAIN",
+  "IndexVersion": "",
+  "IndexKey": "indexes/VERSION/index.zip",
+  "IndexS3Version": "",
+  "IndexZipSha256": "",
+  "AlertEmail": "",
+  "FrontendRelease": "initial",
+  "PriceJson": "{\"model_id\":\"amazon.nova-lite-v1:0\",\"region\":\"ap-southeast-2\",\"input_usd_per_million\":0,\"output_usd_per_million\":0,\"verified_at\":\"\",\"source_url\":\"https://aws.amazon.com/bedrock/pricing/\"}"
+}

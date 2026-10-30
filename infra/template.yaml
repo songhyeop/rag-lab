@@ -1,0 +1,213 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: RAG Lab Sydney small demo (no NAT or always-on compute)
+Parameters:
+  IndexBucket:
+    Type: String
+  ImageUri:
+    Type: String
+  GoogleClientId:
+    Type: String
+  InvitedEmails:
+    Type: String
+    NoEcho: true
+  CorsOrigin:
+    Type: String
+    Default: http://localhost:5173
+  IndexVersion:
+    Type: String
+  IndexKey:
+    Type: String
+  IndexS3Version:
+    Type: String
+  IndexZipSha256:
+    Type: String
+  AlertEmail:
+    Type: String
+  FrontendRelease:
+    Type: String
+    Default: initial
+  PriceJson:
+    Type: String
+    Description: Verified regional pricing JSON, loaded via environment
+Resources:
+  WebBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration: {Status: Enabled}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  Usage:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: pk, AttributeType: S}]
+      KeySchema: [{AttributeName: pk, KeyType: HASH}]
+      SSESpecification: {SSEEnabled: true}
+  Api:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      Architectures: [x86_64]
+      MemorySize: 3072
+      EphemeralStorage: {Size: 2048}
+      Timeout: 60
+      ReservedConcurrentExecutions: 4
+      AutoPublishAlias: live
+      Environment:
+        Variables:
+          RAG_GOOGLE_CLIENT_ID: !Ref GoogleClientId
+          RAG_INVITED_EMAILS: !Ref InvitedEmails
+          RAG_CORS_ORIGIN: !Ref CorsOrigin
+          RAG_INDEX_BUCKET: !Ref IndexBucket
+          RAG_INDEX_KEY: !Ref IndexKey
+          RAG_INDEX_S3_VERSION: !Ref IndexS3Version
+          RAG_INDEX_ZIP_SHA256: !Ref IndexZipSha256
+          RAG_INDEX_VERSION: !Ref IndexVersion
+          RAG_USAGE_TABLE: !Ref Usage
+          RAG_PRICE_JSON: !Ref PriceJson
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [s3:GetObjectVersion]
+              Resource: !Sub 'arn:aws:s3:::${IndexBucket}/*'
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:UpdateItem, dynamodb:PutItem]
+              Resource: !GetAtt Usage.Arn
+            - Effect: Allow
+              Action: [bedrock:InvokeModel, bedrock:CountTokens]
+              Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0'
+      FunctionUrlConfig:
+        AuthType: NONE
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${Api}'
+      RetentionInDays: 7
+  OriginAccess:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-web'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  CDN:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2
+        PriceClass: PriceClass_All
+        DefaultRootObject: index.html
+        Origins:
+          - Id: web
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            OriginPath: !Sub '/releases/${FrontendRelease}'
+            S3OriginConfig: {OriginAccessIdentity: ''}
+            OriginAccessControlId: !GetAtt OriginAccess.Id
+          - Id: api
+            DomainName: !Select [2, !Split ['/', !GetAtt ApiUrl.FunctionUrl]]
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginReadTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: web
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+        CacheBehaviors:
+          -
+            PathPattern: /search
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachePolicyId: 413f160d-8459-4c7f-9caa-53f146e94f76
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+          - PathPattern: /answer
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachePolicyId: 413f160d-8459-4c7f-9caa-53f146e94f76
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+          - PathPattern: /health
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachePolicyId: 413f160d-8459-4c7f-9caa-53f146e94f76
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+          - PathPattern: /usage
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachePolicyId: 413f160d-8459-4c7f-9caa-53f146e94f76
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+          - PathPattern: /experiments
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachePolicyId: 413f160d-8459-4c7f-9caa-53f146e94f76
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+  WebPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: cloudfront.amazonaws.com}
+            Action: s3:GetObject
+            Resource: !Sub '${WebBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CDN}'
+  CostTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription: [{Endpoint: !Ref AlertEmail, Protocol: email}]
+  CostTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref CostTopic]
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: {Service: budgets.amazonaws.com}
+            Action: sns:Publish
+            Resource: !Ref CostTopic
+            Condition:
+              StringEquals: {AWS:SourceAccount: !Ref 'AWS::AccountId'}
+  OperationsBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::StackName}-operations'
+        BudgetType: COST
+        TimeUnit: ANNUALLY
+        BudgetLimit: {Amount: 20, Unit: USD}
+        CostFilters:
+          Service: [AWS Lambda, Amazon Simple Storage Service, AmazonCloudWatch, Amazon DynamoDB, Amazon CloudFront, Amazon EC2 Container Registry (ECR)]
+      NotificationsWithSubscribers:
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 10, ThresholdType: ABSOLUTE_VALUE}
+          Subscribers: [{SubscriptionType: SNS, Address: !Ref CostTopic}]
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 15, ThresholdType: ABSOLUTE_VALUE}
+          Subscribers: [{SubscriptionType: SNS, Address: !Ref CostTopic}]
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 20, ThresholdType: ABSOLUTE_VALUE}
+          Subscribers: [{SubscriptionType: SNS, Address: !Ref CostTopic}]
+Outputs:
+  FunctionName: {Value: !Ref Api}
+  FunctionUrl: {Value: !GetAtt ApiUrl.FunctionUrl}
+  IndexBucketName: {Value: !Ref IndexBucket}
+  WebBucketName: {Value: !Ref WebBucket}
+  DistributionId: {Value: !Ref CDN}
+  DistributionUrl: {Value: !Sub 'https://${CDN.DomainName}'}
+  UsageTable: {Value: !Ref Usage}

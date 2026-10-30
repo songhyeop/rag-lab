@@ -43,7 +43,7 @@ npm run dev
 
 로컬 화면의 `frontend/public/runtime-config.js`는 공개 예제이므로 실제 값을 커밋하지 않는다. 개발용 `runtime-config.local.js`를 만들고 로컬 index.html에서 참조하거나, 빌드 산출물 dist/runtime-config.js만 덮어쓴다. API base는 `http://localhost:8000`이다. 토큰은 React 메모리에만 있고 만료되면 다시 로그인한다.
 
-생성에는 실제 DynamoDB 테이블과 공식 시드니 단가를 확인한 `configs/pricing.local.json`이 필요하다. 파일 형식은 `model_id`, `region`, `input_usd_per_million`, `output_usd_per_million`, `verified_at`, `source_url`이다. 원본 요금표 증거도 함께 보관한다. 미설정은 503으로 차단한다. AWS SDK의 기존 `aws login` 자격 증명은 boto3[crt]로 사용하며 키나 세션을 복사하지 않는다.
+생성에는 실제 DynamoDB 테이블과 공식 시드니 단가를 확인한 `configs/pricing.local.json`이 필요하다. `uv run python -m scripts.freeze_pricing`는 공식 AWS Price List의 시드니 On-demand Nova Lite SKU만 추출하고 단가와 증거를 함께 고정한다. 파일 형식은 `model_id`, `region`, `input_usd_per_million`, `output_usd_per_million`, `verified_at`, `source_url`이다. 원본 요금표 증거도 함께 보관한다. 미설정은 503으로 차단한다. AWS SDK의 기존 `aws login` 자격 증명은 boto3[crt]로 사용하며 키나 세션을 복사하지 않는다.
 
 로컬 생성 평가는 명시적으로만 실행한다:
 
@@ -51,7 +51,7 @@ npm run dev
 uv run rag evaluate --data data/hotpotqa --index artifacts/hotpotqa-256 --split dev --dest results/hotpotqa-generated --generate --subject YOUR_GOOGLE_SUB
 ```
 
-데모는 사용자별 30회/UTC일이다. 평가도 같은 DynamoDB의 $30 총예산과 동시성 제한을 사용한다. 전체 생성 평가를 실행할 때는 아래 상태 문서에 기록된 평가 모드/일일 제한을 확인한다. 전체 비용은 입력/출력 token과 request ledger에 남는다. SDK 재시도는 0회로, 최대 1회라는 계획 상한 내다. 실패 후 사용량 불명은 최대 예약을 유지한다. 프로세스 종료로 active lock이 남으면 Bedrock 요청 결과를 확인해 수동 정산해야 한다. 자동 TTL로 비용을 환불하지 않는다.
+데모는 사용자별 30회/UTC일이다. 명시적 로컬 생성 평가는 웹의 일일 30회 제한을 적용하지 않으며 같은 DynamoDB의 $30 총예산과 동시성 제한은 유지한다. 평가와 데모 사용량은 동일한 subject로 합산된다. 전체 비용은 입력/출력 token과 request ledger에 남는다. SDK 재시도는 0회로, 최대 1회라는 계획 상한 내다. 실패 후 사용량 불명은 최대 예약을 유지한다. 프로세스 종료로 active lock이 남으면 Bedrock 요청 결과를 확인해 수동 정산해야 한다. 자동 TTL로 비용을 환불하지 않는다.
 
 ## CI와 로컬 CD
 
@@ -74,7 +74,13 @@ uv run python -m scripts.infra apply --change-set EXACT_CHANGE_SET_ARN --expecte
 
 plan 결과를 검토하고 별도 적용 확인을 받은 뒤 apply한다. Free 플랜·IAM·SAM·공개 endpoint가 거부되면 정확한 오류를 기록하고 중단한다. 정책·플랜 전환 금지.
 
-부트스트랩 output의 ECR로 **CI 이미지**를 옮기고 인덱스 zip(manifest.json, chunks.jsonl, vectors.faiss) 및 S3 VersionId를 고정한다. 서비스 template은 별도 change set으로 검토한다. `configs/service-parameters.example.json`을 복사해 지역·이미지 digest·Google·가격·알림 email을 채운 local 파일을 전달한다. AlertEmail은 SNS 구독 이메일 확인이 필요하다. 알림은 비용 차단이 아니다. 연간 운영 예산은 재설정되므로 누적 지출은 종료 시점까지 별도 추적한다.
+부트스트랩 적용 후 아래 명령으로 ECR에 **CI 이미지**를 그대로 옮기고 인덱스 zip(manifest.json, chunks.jsonl, vectors.faiss) 및 S3 VersionId를 고정한다.
+
+```sh
+uv run python -m scripts.stage --run-id CI_RUN_ID --expected-account EXPECTED_ACCOUNT --index artifacts/hotpotqa-256
+```
+
+`configs/staged.local.json`에 기록된 image digest·index 값에 Google·단가·알림 설정을 더해 service parameters를 완성한다. 서비스 template은 별도 change set으로 검토한다. `configs/service-parameters.example.json`을 복사해 지역·이미지 digest·Google·가격·알림 email을 채운 local 파일을 전달한다. AlertEmail은 SNS 구독 이메일 확인이 필요하다. 알림은 비용 차단이 아니다. 연간 운영 예산은 재설정되므로 누적 지출은 종료 시점까지 별도 추적한다.
 
 ```sh
 uv run python -m scripts.infra plan --stack rag-lab --template infra/template.yaml --parameters configs/service-parameters.local.json

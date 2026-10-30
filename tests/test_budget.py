@@ -114,3 +114,12 @@ def test_parallel_same_user_is_single_flight(ledger):
     assert len(winners) == 1
     assert ledger.usage("alice")["today"]["calls"] == 1
     assert ledger.usage("alice")["service"] == {"active": 1, "charged": 1}
+
+
+def test_embedding_cost_shares_budget_without_consuming_generation_quota(ledger):
+    reservation = ledger.reserve("alice", str(uuid4()), 100, kind="embedding")
+    ledger.settle(reservation, 50, {"inputTokens": 5, "outputTokens": 0})
+    usage = ledger.usage("alice")
+    assert usage["service"]["charged"] == 50
+    assert usage["user"]["input_tokens"] == 5
+    assert usage["today"].get("calls", 0) == 0

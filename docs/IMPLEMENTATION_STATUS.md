@@ -1,6 +1,15 @@
 # 구현·검증 상태
 
-2026-10-30. 코드는 구현했으며 실제 실행 여부를 아래에 구분한다.
+2026-10-30. 최신 사용자 지시에 따라 API 임베딩 + 영구 캐시로 전환하고 **실제 호출 전까지만** 구현·검증한다.
+
+- 이전 CPU 색인 프로세스는 종료했다. 전체 검색 평가 리포트는 만들지 않았으며 미완료다.
+- 최신 검증: pytest 56건(DynamoDB Local 포함), Ruff, mypy, 프런트엔드 검사·빌드, SAM lint 통과. 실제 캐시 api_batches=0.
+- API 호출은 기본 차단, provider 미선택. OpenAI/Bedrock 어댑터는 모의 응답으로 검증한다.
+- SQLite 영구 벡터 캐시, batch checkpoint 재개, namespace 분리, offline FAISS 재생성과 portable snapshot export를 추가했다.
+- 실제 embedding API·Bedrock 생성·AWS 배포는 실행하지 않았다. 이전 main 후보 CI는 취소했다.
+- 아래의 ONNX 임베딩 smoke는 변경 전 버전의 과거 검증이다. 현재 ONNX는 리랭커에만 사용한다.
+
+현재 계약: [EMBEDDING_CACHE.md](EMBEDDING_CACHE.md). 기존 검증 기록과 남은 항목은 아래에 보존한다.
 
 ## 구현 및 로컬 검증
 
@@ -21,7 +30,7 @@
 
 ## 실행 대기·미완료
 
-- SciFact/HotpotQA 전체 ONNX 색인과 실제 검색 비교 리포트: 생성 중. 실제 결과는 docs/reports에 별도로 공개한다.
+- SciFact/HotpotQA 전체 ONNX 색인과 실제 검색 비교 리포트: 사용자 지시로 중단했다. API 호출 승인 후 새로운 API 모델로 생성해야 한다.
 - 128/256/384 전체 train sweep 및 그 결과를 이용한 설정 선택: 아직 실행하지 않았다. 기본 256 설정은 최종 점수를 보고 변경하지 않는다.
 - Google OAuth client ID·초대 Gmail·알림 수신 주소가 아직 제공되지 않았다. 실제 Google 로그인 검증은 대기 중이며 인증 우회는 없다.
 - AWS 계정은 시드니, Free 플랜 ACTIVE로 확인했다. 플랜·정책 변경 없음.

@@ -1,5 +1,8 @@
 # RAG Lab — 서비스·실험·배포 계획
 
+> 2026-10-30 변경: 임베딩은 API + 영구 SQLite 캐시로 전환했다. 아래의 BGE/로컬 ONNX 임베딩 설명은 초기 계획이며, 현재 계약은 [EMBEDDING_CACHE.md](EMBEDDING_CACHE.md)가 우선한다. 실제 API 호출 전까지만 구현·모의 검증한다.
+
+
 공개 데이터로 검색과 청킹을 비교하고 답변 정확도·근거·지연·비용을 재현 가능하게 측정한다. 저장소는 `songhyeop/rag-lab` (public), Python 3.12 + LlamaIndex + FastAPI, React/TypeScript/Vite, uv lock을 사용한다. 로컬 실험과 AWS 시드니의 최대 5명 Google 초대 사용자 데모가 대상이다.
 
 ## 범위와 비용

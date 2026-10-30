@@ -10,11 +10,12 @@ from llama_index.core import Document
 from llama_index.core.node_parser import TokenTextSplitter
 from rank_bm25 import BM25Okapi
 
+from rag_lab.embedding_api import create_embedder
+from rag_lab.embeddings import CachedEmbedder
 from rag_lab.io import digest, read_json, read_jsonl, sha, verify_files, write_json, write_jsonl
 from rag_lab.models import OnnxModel
 
 ENC = tiktoken.get_encoding("cl100k_base")
-QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
 
 def tokenize(text: str) -> list[str]:
@@ -33,7 +34,17 @@ def unique_docs(hits: list[dict]) -> list[str]:
     return list(dict.fromkeys(h["doc_id"] for h in hits))
 
 
-def build_index(data: Path, dest: Path, model_dir: Path, config: dict) -> None:
+def build_index(
+    data: Path,
+    dest: Path,
+    model_dir: Path,
+    config: dict,
+    *,
+    embedder: CachedEmbedder | None = None,
+    cache: Path | None = None,
+    offline: bool = True,
+    allow_api: bool = False,
+) -> None:
     started = time.perf_counter()
     source = read_json(data / "manifest.json")
     verify_files(data, source["files"])
@@ -58,7 +69,9 @@ def build_index(data: Path, dest: Path, model_dir: Path, config: dict) -> None:
                     "text": node.get_content(),
                 }
             )
-    embed = OnnxModel(model_dir / "embedding")
+    embed = embedder or create_embedder(
+        config, cache_path=cache, offline=offline, allow_api=allow_api
+    )
     vectors = embed.embed([c["text"] for c in chunks])
     dest.mkdir(parents=True, exist_ok=True)
     index = faiss.IndexFlatIP(vectors.shape[1])
@@ -66,10 +79,12 @@ def build_index(data: Path, dest: Path, model_dir: Path, config: dict) -> None:
     faiss.write_index(index, str(dest / "vectors.faiss"))
     write_jsonl(dest / "chunks.jsonl", chunks)
     models = {
-        name: read_json(model_dir / name / "artifact.json") for name in ["embedding", "reranker"]
+        "embedding": embed.spec.identity(),
+        "reranker": read_json(model_dir / "reranker" / "artifact.json"),
     }
     manifest = {
-        "schema_version": 1,
+        "embedding_cache": embed.last_stats,
+        "schema_version": 2,
         "dataset": source["dataset"],
         "scope": source["scope"],
         "dataset_manifest_sha256": sha(data / "manifest.json"),
@@ -86,7 +101,18 @@ def build_index(data: Path, dest: Path, model_dir: Path, config: dict) -> None:
 
 
 class SearchEngine:
-    def __init__(self, index_dir: Path, model_dir: Path, expected: str = ""):
+    def __init__(
+        self,
+        index_dir: Path,
+        model_dir: Path,
+        expected: str = "",
+        *,
+        embedder: CachedEmbedder | None = None,
+        cache: Path | None = None,
+        offline: bool = True,
+        allow_api: bool = False,
+        persist_queries: bool = False,
+    ):
         self.manifest = read_json(index_dir / "manifest.json")
         base = {k: v for k, v in self.manifest.items() if k != "version"}
         if digest(base) != self.manifest["version"]:
@@ -97,14 +123,30 @@ class SearchEngine:
         self.chunks = read_jsonl(index_dir / "chunks.jsonl")
         self.bm25 = BM25Okapi([tokenize(c["text"]) for c in self.chunks])
         self.index = faiss.read_index(str(index_dir / "vectors.faiss"))
-        self.embedding = OnnxModel(model_dir / "embedding")
-        self.reranker = OnnxModel(model_dir / "reranker")
-        for name, obj in [("embedding", self.embedding), ("reranker", self.reranker)]:
-            if obj.manifest != self.manifest["models"][name]:
-                raise ValueError("Local/index model artifact mismatch")
         self.config = self.manifest["config"]
+        self.embedding = embedder or create_embedder(
+            self.config,
+            cache_path=cache,
+            offline=offline,
+            allow_api=allow_api,
+            subject="query-embedding",
+        )
+        if self.embedding.spec.identity() != self.manifest["models"]["embedding"]:
+            raise ValueError("API/index embedding specification mismatch")
+        if self.index.d != self.embedding.spec.dimensions:
+            raise ValueError("FAISS/API embedding dimensions mismatch")
+        self.model_dir = model_dir
+        self.persist_queries = persist_queries
+        self.reranker: OnnxModel | None = None
 
-    def search(self, query: str, method: str = "hybrid_rerank", limit: int = 50) -> dict[str, Any]:
+    def search(
+        self,
+        query: str,
+        method: str = "hybrid_rerank",
+        limit: int = 50,
+        *,
+        subject: str | None = None,
+    ) -> dict[str, Any]:
         started = time.perf_counter()
         timings = {}
         k = min(self.config["candidate_k"], len(self.chunks))
@@ -120,7 +162,9 @@ class SearchEngine:
             timings["bm25_ms"] = (time.perf_counter() - tick) * 1000
         if method in ["dense", "hybrid", "hybrid_rerank"]:
             tick = time.perf_counter()
-            vector = self.embedding.embed([QUERY_PREFIX + query])
+            vector = self.embedding.embed_query(
+                query, persist=self.persist_queries, subject=subject
+            )
             _, indices = self.index.search(vector, k)
             ranks.append([int(i) for i in indices[0] if i >= 0])
             timings["dense_ms"] = (time.perf_counter() - tick) * 1000
@@ -130,6 +174,10 @@ class SearchEngine:
         if method == "hybrid_rerank" and ranked:
             tick = time.perf_counter()
             candidates = ranked[: self.config["rerank_k"]]
+            if self.reranker is None:
+                self.reranker = OnnxModel(self.model_dir / "reranker")
+                if self.reranker.manifest != self.manifest["models"]["reranker"]:
+                    raise ValueError("Local/index reranker artifact mismatch")
             scores = self.reranker.rerank(query, [self.chunks[i]["text"] for i, _ in candidates])
             reranked = sorted(
                 zip([i for i, _ in candidates], scores, strict=True), key=lambda x: (-x[1], x[0])

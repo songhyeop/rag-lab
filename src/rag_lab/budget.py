@@ -30,7 +30,11 @@ class Ledger:
             config=Config(retries={"total_max_attempts": 1}),
         )
 
-    def reserve(self, subject: str, request_id: str, amount: int) -> dict:
+    def reserve(
+        self, subject: str, request_id: str, amount: int, *, kind: str = "generation"
+    ) -> dict:
+        if kind not in {"generation", "embedding"}:
+            raise ValueError("Unsupported budget request kind")
         if amount <= 0 or amount > LIMIT:
             raise BudgetDenied("Invalid reservation amount")
         day = datetime.now(UTC).date().isoformat()
@@ -89,12 +93,15 @@ class Ledger:
                         "amount": {"N": str(amount)},
                         "state": {"S": "reserved"},
                         "day": {"S": day},
+                        "kind": {"S": kind},
                     },
                     "ConditionExpression": "attribute_not_exists(pk)",
                 }
             },
         ]
-        if self.evaluation:
+        if kind == "embedding":
+            operations.pop(2)  # Embedding calls share dollars, not the 30 generations/day counter.
+        elif self.evaluation:
             # Local explicit evaluation only. Shares global cost/concurrency; web keeps 30/day.
             daily = operations[2]["Update"]
             daily.pop("ConditionExpression")

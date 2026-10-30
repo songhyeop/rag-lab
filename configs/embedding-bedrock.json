@@ -1,0 +1,21 @@
+{
+  "chunk_size": 256,
+  "overlap": 32,
+  "candidate_k": 50,
+  "rrf_k": 60,
+  "rerank_k": 20,
+  "context_k": 5,
+  "context_tokens": 2000,
+  "max_output_tokens": 512,
+  "temperature": 0,
+  "model_id": "amazon.nova-lite-v1:0",
+  "embedding": {
+    "provider": "bedrock",
+    "model": "amazon.titan-embed-text-v2:0",
+    "dimensions": 512,
+    "revision": "amazon.titan-embed-text-v2:0@cache-epoch-1",
+    "region": "ap-southeast-2",
+    "preprocessing": "strip-v1",
+    "normalize": true
+  }
+}

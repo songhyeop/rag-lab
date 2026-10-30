@@ -11,5 +11,6 @@
   "index_s3_version": "",
   "index_zip_sha256": "",
   "price_file": "configs/pricing.local.json",
-  "smoke_token_env": "RAG_SMOKE_GOOGLE_TOKEN"
+  "smoke_token_env": "RAG_SMOKE_GOOGLE_TOKEN",
+  "embedding_price_file": "configs/embedding-price.local.json"
 }

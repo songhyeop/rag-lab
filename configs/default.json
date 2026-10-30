@@ -1,1 +1,21 @@
-{"chunk_size":256,"overlap":32,"candidate_k":50,"rrf_k":60,"rerank_k":20,"context_k":5,"context_tokens":2000,"max_output_tokens":512,"temperature":0,"model_id":"amazon.nova-lite-v1:0","embedding_query_prefix":"Represent this sentence for searching relevant passages: "}
+{
+  "chunk_size": 256,
+  "overlap": 32,
+  "candidate_k": 50,
+  "rrf_k": 60,
+  "rerank_k": 20,
+  "context_k": 5,
+  "context_tokens": 2000,
+  "max_output_tokens": 512,
+  "temperature": 0,
+  "model_id": "amazon.nova-lite-v1:0",
+  "embedding": {
+    "provider": "unconfigured",
+    "model": "",
+    "dimensions": 512,
+    "revision": "not-selected",
+    "region": "ap-southeast-2",
+    "preprocessing": "strip-v1",
+    "normalize": true
+  }
+}

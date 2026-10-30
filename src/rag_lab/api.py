@@ -78,7 +78,14 @@ def engine() -> SearchEngine:
                 if sum(i.file_size for i in z.infolist()) > 1_500_000_000:
                     raise ValueError("Index exceeds ephemeral storage budget")
                 z.extractall(directory)
-    return SearchEngine(directory, Path(cfg.model_dir), cfg.index_version)
+    return SearchEngine(
+        directory,
+        Path(cfg.model_dir),
+        cfg.index_version,
+        cache=Path("/tmp/query-cache.sqlite3") if cfg.index_bucket else Path(cfg.embedding_cache),
+        offline=not cfg.embedding_api_enabled,
+        allow_api=cfg.embedding_api_enabled,
+    )
 
 
 @lru_cache
@@ -109,7 +116,7 @@ def search(query: Query, request: Request, account: dict = Depends(user)):
     try:
         return {
             "request_id": request.state.request_id,
-            **engine().search(query.question, query.method),
+            **engine().search(query.question, query.method, subject=account["sub"]),
         }
     except (OSError, ValueError) as exc:
         raise HTTPException(503, "Pinned search artifacts unavailable") from exc
@@ -118,7 +125,7 @@ def search(query: Query, request: Request, account: dict = Depends(user)):
 @app.post("/answer")
 def answer(query: Query, request: Request, account: dict = Depends(user)):
     try:
-        retrieval = engine().search(query.question, query.method)
+        retrieval = engine().search(query.question, query.method, subject=account["sub"])
         result = generator().answer(
             account["sub"],
             query.question,

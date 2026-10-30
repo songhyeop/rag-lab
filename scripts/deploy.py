@@ -191,7 +191,7 @@ def push_image(
     ):
         raise ValueError("Loaded image identity/platform mismatch")
     if index is not None:
-        for name in ["embedding", "reranker"]:
+        for name in ["reranker"]:
             model = json.loads(
                 subprocess.check_output(
                     [
@@ -227,8 +227,13 @@ def main():
     parser.add_argument("--run-id", type=int, required=True)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--generate-smoke", action="store_true")
+    parser.add_argument("--allow-embedding-api", action="store_true")
     args = parser.parse_args()
     cfg = read_json(args.config)
+    if not args.allow_embedding_api:
+        raise ValueError(
+            "Authenticated search smoke invokes a paid embedding API; pass --allow-embedding-api explicitly"
+        )
     session = boto3.Session(region_name="ap-southeast-2")
     account = session.client("sts").get_caller_identity()["Account"]
     check_config(cfg, account)
@@ -288,6 +293,8 @@ def main():
     write_json(record, release)
     env = lam.get_function_configuration(FunctionName=function)["Environment"]["Variables"]
     env.update(
+        RAG_EMBEDDING_API_ENABLED="true",
+        RAG_EMBEDDING_PRICE_JSON=json.dumps(read_json(Path(cfg["embedding_price_file"]))),
         RAG_GOOGLE_CLIENT_ID=cfg["google_client_id"],
         RAG_INVITED_EMAILS=json.dumps(cfg["invited_emails"]),
         RAG_INDEX_BUCKET=cfg["index_bucket"],

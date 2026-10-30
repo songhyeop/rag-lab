@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     usage_table: str = ""
     price_file: str = "configs/pricing.local.json"
     price_json: str = ""
+    embedding_api_enabled: bool = False
+    embedding_cache: str = "artifacts/embedding-cache.sqlite3"
+    embedding_price_file: str = "configs/embedding-price.local.json"
+    embedding_price_json: str = ""
+    openai_api_key: str = ""
     cors_origin: str = "http://localhost:5173"
     report_dir: str = "results"
     index_bucket: str = ""

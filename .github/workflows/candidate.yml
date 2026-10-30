@@ -27,8 +27,8 @@ jobs:
         working-directory: frontend
       - name: Build Linux x86_64 candidate
         run: docker build --platform linux/amd64 --tag "rag-lab:$GITHUB_SHA" .
-      - name: Real ONNX retrieval smoke
-        run: docker run --rm --read-only --tmpfs /tmp:rw,size=1g --platform linux/amd64 --entrypoint /var/task/.venv/bin/rag "rag-lab:$GITHUB_SHA" smoke-models
+      - name: Real ONNX reranker smoke (no embedding API)
+        run: docker run --rm --read-only --tmpfs /tmp:rw,size=1g --platform linux/amd64 --entrypoint /var/task/.venv/bin/rag "rag-lab:$GITHUB_SHA" smoke-reranker
       - name: Lambda runtime health and authentication smoke
         run: |
           docker run -d --read-only --tmpfs /tmp:rw,size=1g --name api -p 9000:8080 "rag-lab:$GITHUB_SHA"

@@ -12,6 +12,13 @@ Parameters:
     Description: Explicit budget end, no later than Free plan expiration
   ImageUri:
     Type: String
+  EmbeddingApiEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+  EmbeddingPriceJson:
+    Type: String
+    Default: ''
   GoogleClientId:
     Type: String
   InvitedEmails:
@@ -70,6 +77,8 @@ Resources:
       AutoPublishAlias: live
       Environment:
         Variables:
+          RAG_EMBEDDING_API_ENABLED: !Ref EmbeddingApiEnabled
+          RAG_EMBEDDING_PRICE_JSON: !Ref EmbeddingPriceJson
           RAG_GOOGLE_CLIENT_ID: !Ref GoogleClientId
           RAG_INVITED_EMAILS: !Ref InvitedEmails
           RAG_CORS_ORIGIN: !Ref CorsOrigin
@@ -90,7 +99,9 @@ Resources:
               Resource: !GetAtt Usage.Arn
             - Effect: Allow
               Action: [bedrock:InvokeModel, bedrock:CountTokens]
-              Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0'
+              Resource:
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0'
+                - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
       FunctionUrlConfig:
         AuthType: NONE
   ApiLogs:

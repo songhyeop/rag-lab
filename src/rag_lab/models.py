@@ -1,4 +1,4 @@
-"""Native ONNX inference: BGE CLS pooling; cross-encoder single relevance logit."""
+"""Native ONNX reranker inference. Document/query embeddings are API-only."""
 
 from pathlib import Path
 
@@ -61,13 +61,6 @@ class OnnxModel:
         return self.session.run(None, {i.name: arrays[i.name] for i in self.session.get_inputs()})[
             0
         ]
-
-    def embed(self, texts: list[str]) -> np.ndarray:
-        batches = []
-        for start in range(0, len(texts), 32):
-            cls = self.run(texts[start : start + 32])[:, 0, :]
-            batches.append(cls / np.maximum(np.linalg.norm(cls, axis=1, keepdims=True), 1e-12))
-        return np.concatenate(batches).astype("float32")
 
     def rerank(self, query: str, texts: list[str]) -> list[float]:
         return self.run([(query, t) for t in texts]).reshape(-1).tolist()

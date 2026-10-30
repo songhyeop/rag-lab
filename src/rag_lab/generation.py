@@ -96,13 +96,12 @@ class Generator:
                 }
             ],
         }
-        count = self.client.count_tokens(
-            modelId=MODEL,
-            input={"converse": {"system": payload["system"], "messages": payload["messages"]}},
-        )["inputTokens"]
-        if count > 4096:
-            raise ValueError("Prompt exceeds input token safety limit")
-        maximum = self.cost(count, 512)
+        # Nova Lite rejects Bedrock CountTokens. Reserve the entire 300K model input
+        # capacity (not an approximate tokenizer count), then settle actual response usage.
+        # Requests are also byte-bounded; no cost is incurred until the atomic reservation.
+        if len(json.dumps(payload).encode("utf-8")) > 32768:
+            raise ValueError("Prompt exceeds input safety limit")
+        maximum = self.cost(300000, 512)
         reservation = self.ledger.reserve(subject, request_id, maximum)
         actual = None
         usage = None

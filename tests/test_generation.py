@@ -42,6 +42,7 @@ CONFIG = {"context_tokens": 2000, "context_k": 5}
 def test_generation_records_usage_and_citations(generator):
     result = generator.answer("sub", "Which planet?", HITS, CONFIG)
     assert result["answer"] == "Mars"
+    generator.client.count_tokens.assert_not_called()
     generator.ledger.reserve.assert_called_once()
     generator.ledger.settle.assert_called_once()
 

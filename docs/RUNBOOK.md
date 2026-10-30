@@ -51,7 +51,7 @@ npm run dev
 uv run rag evaluate --data data/hotpotqa --index artifacts/hotpotqa-256 --split dev --dest results/hotpotqa-generated --generate --subject YOUR_GOOGLE_SUB
 ```
 
-데모는 사용자별 30회/UTC일이다. 명시적 로컬 생성 평가는 웹의 일일 30회 제한을 적용하지 않으며 같은 DynamoDB의 $30 총예산과 동시성 제한은 유지한다. 평가와 데모 사용량은 동일한 subject로 합산된다. 전체 비용은 입력/출력 token과 request ledger에 남는다. SDK 재시도는 0회로, 최대 1회라는 계획 상한 내다. 실패 후 사용량 불명은 최대 예약을 유지한다. 프로세스 종료로 active lock이 남으면 Bedrock 요청 결과를 확인해 수동 정산해야 한다. 자동 TTL로 비용을 환불하지 않는다.
+데모는 사용자별 30회/UTC일이다. 명시적 로컬 생성 평가는 웹의 일일 30회 제한을 적용하지 않으며 같은 DynamoDB의 $30 총예산과 동시성 제한은 유지한다. 평가와 데모 사용량은 동일한 subject로 합산된다. 전체 비용은 입력/출력 token과 request ledger에 남는다. Nova Lite는 실제 CountTokens 호출에서 지원되지 않음을 확인했으므로 호출 전 모델 최대 입력 300,000토큰과 출력 512토큰 비용을 예약한다. 전체 payload는 32KiB로 제한하며 실제 응답 usage로 차액을 정산한다. SDK 재시도는 0회로, 최대 1회라는 계획 상한 내다. 실패 후 사용량 불명은 최대 예약을 유지한다. 프로세스 종료로 active lock이 남으면 Bedrock 요청 결과를 확인해 수동 정산해야 한다. 자동 TTL로 비용을 환불하지 않는다.
 
 ## CI와 로컬 CD
 

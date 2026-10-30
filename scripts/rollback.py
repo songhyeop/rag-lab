@@ -20,13 +20,22 @@ token = os.environ.get(args.token_env, "")
 if not token:
     raise ValueError("Invited Google ID token required to verify rollback search")
 lam = session.client("lambda")
+current = lam.get_alias(FunctionName=release["function"], Name="live")
+if current["FunctionVersion"] != release["version"]:
+    raise ValueError("Live release differs from this rollback manifest")
+session.client("s3").head_object(
+    Bucket=release["web_bucket"], Key=release["previous_frontend_path"].lstrip("/") + "/index.html"
+)
 prior = lam.get_function_configuration(
     FunctionName=release["function"], Qualifier=release["previous_version"]
 )
 index_version = prior["Environment"]["Variables"]["RAG_INDEX_VERSION"]
 smoke(lam, release["function"], release["previous_version"], token, index_version)
 lam.update_alias(
-    FunctionName=release["function"], Name="live", FunctionVersion=release["previous_version"]
+    FunctionName=release["function"],
+    Name="live",
+    FunctionVersion=release["previous_version"],
+    RevisionId=current["RevisionId"],
 )
 update_origin(
     session.client("cloudfront"), release["distribution"], release["previous_frontend_path"]

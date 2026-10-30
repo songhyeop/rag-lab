@@ -4,6 +4,12 @@ Description: RAG Lab Sydney small demo (no NAT or always-on compute)
 Parameters:
   IndexBucket:
     Type: String
+  BudgetStartEpoch:
+    Type: String
+    Description: Explicit non-renewing operating budget start (Unix epoch seconds)
+  BudgetEndEpoch:
+    Type: String
+    Description: Explicit budget end, no later than Free plan expiration
   ImageUri:
     Type: String
   GoogleClientId:
@@ -193,6 +199,8 @@ Resources:
         BudgetName: !Sub '${AWS::StackName}-operations'
         BudgetType: COST
         TimeUnit: ANNUALLY
+        TimePeriod: {Start: !Ref BudgetStartEpoch, End: !Ref BudgetEndEpoch}
+        CostTypes: {IncludeCredit: false, IncludeRefund: false}
         BudgetLimit: {Amount: 20, Unit: USD}
         CostFilters:
           Service: [AWS Lambda, Amazon Simple Storage Service, AmazonCloudWatch, Amazon DynamoDB, Amazon CloudFront, Amazon EC2 Container Registry (ECR)]

@@ -11,6 +11,7 @@ from pathlib import Path
 import boto3
 import requests
 
+from rag_lab.io import digest as manifest_digest
 from rag_lab.io import read_json, sha, write_json
 from scripts.candidate import download
 
@@ -136,7 +137,35 @@ def update_origin(client, distribution: str, path: str) -> None:
     )
 
 
-def push_image(session, root: Path, candidate: dict, repository_uri: str, account: str) -> str:
+def validate_index_archive(archive: Path, expected: str) -> dict:
+    import hashlib
+    import zipfile
+
+    with zipfile.ZipFile(archive) as z:
+        if set(z.namelist()) != {"manifest.json", "chunks.jsonl", "vectors.faiss"}:
+            raise ValueError("Unexpected index archive entries")
+        if sum(i.file_size for i in z.infolist()) > 1_500_000_000:
+            raise ValueError("Index exceeds Lambda storage budget")
+        index = json.loads(z.read("manifest.json"))
+        identity = manifest_digest({k: v for k, v in index.items() if k != "version"})
+        if index["version"] != expected or identity != expected:
+            raise ValueError("Index version mismatch")
+        if set(index["files"]) != {"chunks.jsonl", "vectors.faiss"}:
+            raise ValueError("Incomplete index checksums")
+        for name, checksum in index["files"].items():
+            if hashlib.sha256(z.read(name)).hexdigest() != checksum:
+                raise ValueError("Index file checksum mismatch")
+    return index
+
+
+def push_image(
+    session,
+    root: Path,
+    candidate: dict,
+    repository_uri: str,
+    account: str,
+    index: dict | None = None,
+) -> str:
     # Authenticate Docker via stdin. Credentials are not command arguments or logs.
     auth = session.client("ecr").get_authorization_token()["authorizationData"][0]
     import base64
@@ -161,6 +190,28 @@ def push_image(session, root: Path, candidate: dict, repository_uri: str, accoun
         or image["Os"] != "linux"
     ):
         raise ValueError("Loaded image identity/platform mismatch")
+    if index is not None:
+        for name in ["embedding", "reranker"]:
+            model = json.loads(
+                subprocess.check_output(
+                    [
+                        "docker",
+                        "run",
+                        "--rm",
+                        "--platform",
+                        "linux/amd64",
+                        "--read-only",
+                        "--network",
+                        "none",
+                        "--entrypoint",
+                        "/bin/cat",
+                        candidate["image_tag"],
+                        f"/var/task/models/{name}/artifact.json",
+                    ]
+                )
+            )
+            if model != index["models"][name]:
+                raise ValueError("Candidate image/index model artifacts differ")
     target = repository_uri + ":" + candidate["commit"]
     subprocess.run(["docker", "tag", candidate["image_tag"], target], check=True)
     subprocess.run(["docker", "push", target], check=True)
@@ -199,12 +250,7 @@ def main():
     )
     if sha(archive) != cfg["index_zip_sha256"]:
         raise ValueError("Index artifact checksum mismatch")
-    import zipfile
-
-    with zipfile.ZipFile(archive) as z:
-        index = json.loads(z.read("manifest.json"))
-    if index["version"] != cfg["index_version"]:
-        raise ValueError("Index version mismatch")
+    index = validate_index_archive(archive, cfg["index_version"])
     cf = session.client("cloudformation")
     stack = cf.describe_stacks(StackName=cfg["stack"])["Stacks"][0]
     outputs = {x["OutputKey"]: x["OutputValue"] for x in stack["Outputs"]}
@@ -216,7 +262,7 @@ def main():
     previous_path = next(
         o["OriginPath"] for o in previous_dist["Origins"]["Items"] if o["Id"] == "web"
     )
-    image_uri = push_image(session, root, candidate, cfg["repository_uri"], account)
+    image_uri = push_image(session, root, candidate, cfg["repository_uri"], account, index)
     # Save a complete rollback record before mutating the function or alias.
     prior_config = lam.get_function_configuration(
         FunctionName=function, Qualifier=previous["FunctionVersion"]
@@ -280,6 +326,7 @@ def main():
             if name in ["index.html", "runtime-config.js"]
             else "max-age=31536000,immutable",
         )
+    switched = False
     try:
         lam.update_alias(
             FunctionName=function,
@@ -287,16 +334,44 @@ def main():
             FunctionVersion=version,
             RevisionId=previous["RevisionId"],
         )
+        switched = True
         update_origin(dist, outputs["DistributionId"], "/" + prefix)
-        for path, expected in [("/health", 200), ("/usage", 401)]:
+        for path, expected in [("/", 200), ("/health", 200), ("/usage", 401)]:
             if requests.get(outputs["DistributionUrl"] + path, timeout=60).status_code != expected:
                 raise ValueError("Public post-deployment smoke failed")
+        public_result = requests.post(
+            outputs["DistributionUrl"] + "/search",
+            headers={"Authorization": "Bearer " + token},
+            json={"question": "Which planet is known as the red planet?"},
+            timeout=60,
+        )
+        if (
+            public_result.status_code != 200
+            or public_result.json()["index_version"] != cfg["index_version"]
+        ):
+            raise ValueError("CloudFront authenticated search/version check failed")
+        direct = requests.post(
+            outputs["FunctionUrl"] + "search", json={"question": "test"}, timeout=60
+        )
+        if direct.status_code != 401:
+            raise ValueError("Direct Function URL must enforce API authentication")
         smoke(lam, function, "live", token, cfg["index_version"])
     except Exception:
-        lam.update_alias(
-            FunctionName=function, Name="live", FunctionVersion=previous["FunctionVersion"]
-        )
-        update_origin(dist, outputs["DistributionId"], previous_path)
+        if switched:
+            current = lam.get_alias(FunctionName=function, Name="live")
+            if current["FunctionVersion"] != version:
+                release["status"] = "failed-concurrent-release-changed"
+                write_json(record, release)
+                raise RuntimeError(
+                    "Live release changed concurrently; refusing to overwrite it"
+                ) from None
+            lam.update_alias(
+                FunctionName=function,
+                Name="live",
+                FunctionVersion=previous["FunctionVersion"],
+                RevisionId=current["RevisionId"],
+            )
+            update_origin(dist, outputs["DistributionId"], previous_path)
         release["status"] = "failed-restored"
         write_json(record, release)
         raise

@@ -10,5 +10,7 @@
   "IndexZipSha256": "",
   "AlertEmail": "",
   "FrontendRelease": "initial",
-  "PriceJson": "{\"model_id\":\"amazon.nova-lite-v1:0\",\"region\":\"ap-southeast-2\",\"input_usd_per_million\":0,\"output_usd_per_million\":0,\"verified_at\":\"\",\"source_url\":\"https://aws.amazon.com/bedrock/pricing/\"}"
+  "PriceJson": "{\"model_id\":\"amazon.nova-lite-v1:0\",\"region\":\"ap-southeast-2\",\"input_usd_per_million\":0,\"output_usd_per_million\":0,\"verified_at\":\"\",\"source_url\":\"https://aws.amazon.com/bedrock/pricing/\"}",
+  "BudgetStartEpoch": "SET_CURRENT_EPOCH",
+  "BudgetEndEpoch": "SET_FREE_PLAN_EXPIRATION_EPOCH"
 }

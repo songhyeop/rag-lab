@@ -48,6 +48,8 @@ def test_bundle_checksum_and_commit(tmp_path):
         "commit": "a" * 40,
         "repository": REPO,
         "platform": "linux/amd64",
+        "image_tag": "rag-lab:" + "a" * 40,
+        "image_id": "sha256:" + "b" * 64,
         "files": {p.name: sha(p) for p in tmp_path.iterdir()},
     }
     write_json(tmp_path / "candidate.json", manifest)
@@ -80,3 +82,32 @@ def test_frontend_path_traversal_rejected(tmp_path):
         t.addfile(info, io.BytesIO(b"x"))
     with pytest.raises(ValueError):
         safe_frontend(path)
+
+
+def test_index_archive_identity_and_checksum(tmp_path):
+    import hashlib
+    import json
+    import zipfile
+
+    from rag_lab.io import digest
+    from scripts.deploy import validate_index_archive
+
+    files = {"chunks.jsonl": b"{}\n", "vectors.faiss": b"vectors"}
+    manifest = {"files": {n: hashlib.sha256(v).hexdigest() for n, v in files.items()}, "models": {}}
+    manifest["version"] = digest(manifest)
+    archive = tmp_path / "index.zip"
+
+    def write():
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("manifest.json", json.dumps(manifest))
+            for n, v in files.items():
+                z.writestr(n, v)
+
+    write()
+    validate_index_archive(archive, manifest["version"])
+    with pytest.raises(ValueError, match="version"):
+        validate_index_archive(archive, "wrong")
+    files["vectors.faiss"] = b"tampered"
+    write()
+    with pytest.raises(ValueError, match="checksum"):
+        validate_index_archive(archive, manifest["version"])

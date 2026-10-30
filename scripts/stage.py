@@ -34,7 +34,7 @@ def main():
         "Stacks"
     ][0]
     outputs = {o["OutputKey"]: o["OutputValue"] for o in stack["Outputs"]}
-    image = push_image(session, root, candidate, outputs["RepositoryUri"], account)
+    image = push_image(session, root, candidate, outputs["RepositoryUri"], account, index)
     archive = root / "index.zip"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as z:
         for name in ["manifest.json", "chunks.jsonl", "vectors.faiss"]:

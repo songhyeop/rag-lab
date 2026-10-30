@@ -8,6 +8,10 @@ jobs:
   backend:
     name: backend
     runs-on: ubuntu-24.04
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
+        ports: ['8000:8000']
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -21,6 +25,7 @@ jobs:
       - run: uv run pytest -q
         env:
           AWS_EC2_METADATA_DISABLED: 'true'
+          RAG_TEST_DYNAMODB_ENDPOINT: http://127.0.0.1:8000
   frontend:
     name: frontend
     runs-on: ubuntu-24.04

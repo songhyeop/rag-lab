@@ -41,7 +41,7 @@ cd frontend
 npm run dev
 ```
 
-로컬 화면의 `frontend/public/runtime-config.js`는 공개 예제이므로 실제 값을 커밋하지 않는다. 개발용 `runtime-config.local.js`를 만들고 로컬 index.html에서 참조하거나, 빌드 산출물 dist/runtime-config.js만 덮어쓴다. API base는 `http://localhost:8000`이다. 토큰은 React 메모리에만 있고 만료되면 다시 로그인한다.
+로컬 화면은 `frontend/.env.example`을 `frontend/.env.local`로 복사하고 `VITE_GOOGLE_CLIENT_ID`를 설정한다. API base는 `http://localhost:8000`이다. `.env.local`은 Git에서 제외한다. 배포에서는 CI 산출물에 runtime-config.js를 주입하므로 실제 OAuth 설정 없이 후보를 빌드한다. 토큰은 React 메모리에만 있고 만료되면 다시 로그인한다.
 
 생성에는 실제 DynamoDB 테이블과 공식 시드니 단가를 확인한 `configs/pricing.local.json`이 필요하다. `uv run python -m scripts.freeze_pricing`는 공식 AWS Price List의 시드니 On-demand Nova Lite SKU만 추출하고 단가와 증거를 함께 고정한다. 파일 형식은 `model_id`, `region`, `input_usd_per_million`, `output_usd_per_million`, `verified_at`, `source_url`이다. 원본 요금표 증거도 함께 보관한다. 미설정은 503으로 차단한다. AWS SDK의 기존 `aws login` 자격 증명은 boto3[crt]로 사용하며 키나 세션을 복사하지 않는다.
 
@@ -80,7 +80,7 @@ plan 결과를 검토하고 별도 적용 확인을 받은 뒤 apply한다. Free
 uv run python -m scripts.stage --run-id CI_RUN_ID --expected-account EXPECTED_ACCOUNT --index artifacts/hotpotqa-256
 ```
 
-`configs/staged.local.json`에 기록된 image digest·index 값에 Google·단가·알림 설정을 더해 service parameters를 완성한다. 서비스 template은 별도 change set으로 검토한다. `configs/service-parameters.example.json`을 복사해 지역·이미지 digest·Google·가격·알림 email을 채운 local 파일을 전달한다. AlertEmail은 SNS 구독 이메일 확인이 필요하다. 알림은 비용 차단이 아니다. 연간 운영 예산은 재설정되므로 누적 지출은 종료 시점까지 별도 추적한다.
+`configs/staged.local.json`에 기록된 image digest·index 값에 Google·단가·알림 설정을 더해 service parameters를 완성한다. 서비스 template은 별도 change set으로 검토한다. `configs/service-parameters.example.json`을 복사해 지역·이미지 digest·Google·가격·알림 email을 채운 local 파일을 전달한다. AlertEmail은 SNS 구독 이메일 확인이 필요하다. 알림은 비용 차단이 아니다. 운영 알림은 크레딧/환불을 제외한 계정 내 지정 서비스의 실제 비용 합계다. BudgetStartEpoch·BudgetEndEpoch로 배포부터 Free 플랜 만료 전까지의 일회성 기간을 고정해 자동 갱신을 피한다. 기존의 다른 프로젝트 서비스 비용도 포함하므로 RAG 전용 비용으로 해석하지 않는다.
 
 ```sh
 uv run python -m scripts.infra plan --stack rag-lab --template infra/template.yaml --parameters configs/service-parameters.local.json
@@ -110,3 +110,16 @@ sam validate --lint --template infra/template.yaml --region ap-southeast-2
 ```
 
 PR에서는 고정 벡터·자체 문서 fixture만 사용한다. 실제 ONNX smoke는 `uv run rag smoke-models`이며 GitHub 후보 이미지에서도 실행한다. 모든 업무 경로의 401을 모델 로딩 전 검증하고, 원자 예산·동시성·일일 제한·잘못된 citation·CI 출처·checksum·AWS account/index 누락을 테스트한다.
+
+병렬 예산 검사는 Moto가 스레드 안전하지 않아 DynamoDB Local에서 수행한다. CI의 backend job도 같은 pinned image를 사용하며 실제 AWS 인증은 없다.
+
+```sh
+docker run -d --name rag-lab-dynamodb -p 127.0.0.1:8001:8000 amazon/dynamodb-local@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
+RAG_TEST_DYNAMODB_ENDPOINT=http://127.0.0.1:8001 uv run pytest -q
+```
+
+리포트 검증은 원본 문서·질의 ID 연결과 평가값 재계산을 포함한다:
+
+```sh
+uv run rag validate-report results/scifact-train --data data/scifact
+```

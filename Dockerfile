@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.12
+FROM public.ecr.aws/lambda/python:3.12@sha256:3c249526505c4bf83ab74be5d4749b7705798b03effcd34c205c6a77d149c77e
 ENV UV_PROJECT_ENVIRONMENT=/var/task/.venv UV_NO_CACHE=1 \
     PYTHONPATH=/var/task/.venv/lib/python3.12/site-packages:/var/task/src \
     PATH=/var/task/.venv/bin:$PATH HF_HOME=/tmp/huggingface TIKTOKEN_CACHE_DIR=/var/task/tiktoken_cache
@@ -9,7 +9,9 @@ COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable
 COPY configs ./configs
 COPY tests/fixtures ./tests/fixtures
-COPY THIRD_PARTY_NOTICES.md ./
+COPY THIRD_PARTY_NOTICES.md LICENSE ./
+COPY licenses ./licenses
+COPY docs/reports ./reports
 RUN rag models && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
-ENV RAG_MODEL_DIR=/var/task/models RAG_INDEX_DIR=/tmp/index RAG_REPORT_DIR=/var/task/results
+ENV RAG_MODEL_DIR=/var/task/models RAG_INDEX_DIR=/tmp/index RAG_REPORT_DIR=/var/task/reports
 CMD ["rag_lab.api.handler"]

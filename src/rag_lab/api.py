@@ -27,6 +27,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 logger = logging.getLogger("rag_lab")
+logger.setLevel(logging.INFO)
 cold = True
 
 
@@ -34,14 +35,16 @@ cold = True
 async def request_metadata(request: Request, call_next):
     global cold
     started = time.perf_counter()
+    request.state.request_id = str(uuid4())
     was_cold = cold
     cold = False
     response = await call_next(request)
-    response.headers["X-Request-ID"] = str(uuid4())
+    response.headers["X-Request-ID"] = request.state.request_id
     response.headers["Cache-Control"] = "no-store"
     # Never log question, prompt, tokens, email or authorization headers.
     logger.info(
-        "request path=%s status=%s duration_ms=%.1f cold=%s",
+        "request id=%s path=%s status=%s duration_ms=%.1f cold=%s",
+        request.state.request_id,
         request.url.path,
         response.status_code,
         (time.perf_counter() - started) * 1000,
@@ -102,19 +105,26 @@ def health():
 
 
 @app.post("/search")
-def search(query: Query, account: dict = Depends(user)):
+def search(query: Query, request: Request, account: dict = Depends(user)):
     try:
-        return {"request_id": str(uuid4()), **engine().search(query.question, query.method)}
+        return {
+            "request_id": request.state.request_id,
+            **engine().search(query.question, query.method),
+        }
     except (OSError, ValueError) as exc:
         raise HTTPException(503, "Pinned search artifacts unavailable") from exc
 
 
 @app.post("/answer")
-def answer(query: Query, account: dict = Depends(user)):
+def answer(query: Query, request: Request, account: dict = Depends(user)):
     try:
         retrieval = engine().search(query.question, query.method)
         result = generator().answer(
-            account["sub"], query.question, retrieval["hits"], engine().config
+            account["sub"],
+            query.question,
+            retrieval["hits"],
+            engine().config,
+            request_id=request.state.request_id,
         )
         return {**retrieval, **result}
     except BudgetDenied as exc:

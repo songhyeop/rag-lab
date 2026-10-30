@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from rag_lab.data import prepare
 from rag_lab.evaluation import evaluate, validate_report
@@ -32,6 +33,7 @@ def main() -> None:
     p.add_argument("--subject", default="")
     p = sub.add_parser("validate-report")
     p.add_argument("path", type=Path)
+    p.add_argument("--data", type=Path, required=True)
     p = sub.add_parser("smoke-models")
     p.add_argument("--models", type=Path, default=Path("models"))
     args = parser.parse_args()
@@ -46,19 +48,23 @@ def main() -> None:
             args.data, args.index, args.models, args.split, args.dest, args.generate, args.subject
         )
     elif args.command == "validate-report":
-        validate_report(args.path)
+        validate_report(args.path, args.data)
     elif args.command == "smoke-models":
         # Real model/index regression from self-authored, non-benchmark fixture.
-        dest = Path("artifacts/smoke-index")
-        build_index(
-            Path("tests/fixtures/tiny"), dest, args.models, read_json(Path("configs/default.json"))
-        )
-        engine = SearchEngine(dest, args.models)
-        for method in ["dense", "hybrid", "hybrid_rerank"]:
-            result = engine.search("Which planet is the red planet?", method)
-            if result["hits"][0]["doc_id"] != "mars":
-                raise RuntimeError(f"Real ONNX search smoke failed: {method}")
-        print("Real ONNX embedding/reranker search smoke passed")
+        with TemporaryDirectory(prefix="rag-lab-smoke-") as temporary:
+            dest = Path(temporary)
+            build_index(
+                Path("tests/fixtures/tiny"),
+                dest,
+                args.models,
+                read_json(Path("configs/default.json")),
+            )
+            engine = SearchEngine(dest, args.models)
+            for method in ["dense", "hybrid", "hybrid_rerank"]:
+                result = engine.search("Which planet is the red planet?", method)
+                if result["hits"][0]["doc_id"] != "mars":
+                    raise RuntimeError(f"Real ONNX search smoke failed: {method}")
+            print("Real ONNX embedding/reranker search smoke passed")
 
 
 if __name__ == "__main__":

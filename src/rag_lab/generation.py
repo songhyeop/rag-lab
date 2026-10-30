@@ -51,10 +51,16 @@ class Generator:
         )
 
     def answer(
-        self, subject: str, question: str, hits: list[dict], config: dict, mode: str = "retrieved"
+        self,
+        subject: str,
+        question: str,
+        hits: list[dict],
+        config: dict,
+        mode: str = "retrieved",
+        request_id: str | None = None,
     ) -> dict:
         started = time.perf_counter()
-        request_id = str(uuid4())
+        request_id = request_id or str(uuid4())
         evidence = context(hits, config)
         base = {"request_id": request_id, "prompt_sha256": digest(PROMPT), "mode": mode}
         if not evidence and mode != "no_retrieval":

@@ -11,7 +11,7 @@ import numpy as np
 from rag_lab.auth import settings
 from rag_lab.budget import Ledger
 from rag_lab.generation import PROMPT, Generator
-from rag_lab.io import digest, read_json, read_jsonl, sha, write_json, write_jsonl
+from rag_lab.io import digest, read_json, read_jsonl, sha, verify_files, write_json, write_jsonl
 from rag_lab.metrics import answer_metrics, citation_metrics, retrieval_metrics
 from rag_lab.retrieval import SearchEngine, unique_docs
 
@@ -72,6 +72,7 @@ def evaluate(
         "prompt_sha256": digest(PROMPT),
         "uv_lock_sha256": sha(Path("uv.lock")),
         "generation": generate,
+        "methods": METHODS + (["no_retrieval", "oracle"] if generate else []),
         "latency_note": "first query per method cold; subsequent queries warm",
         "engine_load_ms": engine_load_ms,
         "index_seconds": engine.manifest["index_seconds"],
@@ -98,7 +99,10 @@ def evaluate(
                 hits = (
                     []
                     if method == "no_retrieval"
-                    else [c for c in engine.chunks if c["doc_id"] in q["relevant"]]
+                    else sorted(
+                        [c for c in engine.chunks if c["doc_id"] in q["relevant"]],
+                        key=lambda c: (int(c["id"].rsplit(":", 1)[1]), c["doc_id"]),
+                    )
                 )
             if generator:
                 answer = generator.answer(subject, q["question"], hits, engine.config, mode=method)
@@ -193,7 +197,7 @@ def summarize(rows: list[dict], dest: Path, provenance: dict) -> None:
     (dest / "report.md").write_text("\n".join(lines) + "\n")
 
 
-def validate_report(path: Path) -> None:
+def validate_report(path: Path, data: Path | None = None) -> None:
     provenance = read_json(path / "provenance.json")
     rows = read_jsonl(path / "results.jsonl")
     for key in ["commit", "dataset_manifest_sha256", "index_version", "config", "models", "split"]:
@@ -211,3 +215,35 @@ def validate_report(path: Path) -> None:
                     raise ValueError("Metric outside [0, 1]")
     if not rows:
         raise ValueError("Empty report")
+
+    if data is not None:
+        manifest = read_json(data / "manifest.json")
+        verify_files(data, manifest["files"])
+        if sha(data / "manifest.json") != provenance["dataset_manifest_sha256"]:
+            raise ValueError("Report dataset identity mismatch")
+        docs = {d["id"] for d in read_jsonl(data / "corpus.jsonl")}
+        labels = {q["id"]: q for q in read_jsonl(data / f"labels.{provenance['split']}.jsonl")}
+        by_method: dict[str, set[str]] = {}
+        for row in rows:
+            if row["question_id"] not in labels:
+                raise ValueError("Unknown question ID in report")
+            by_method.setdefault(row["method"], set()).add(row["question_id"])
+            q = labels[row["question_id"]]
+            if (
+                set(q["relevant"]) - docs
+                or set(row.get("ranking", [])) - docs
+                or set(row.get("citations", [])) - docs
+            ):
+                raise ValueError("Report references unknown document ID")
+            expected = retrieval_metrics(row["ranking"], q["relevant"]) if "ranking" in row else {}
+            if "answer" in row:
+                expected.update(answer_metrics(row["answer"], q["answer"]))
+                expected.update(citation_metrics(row["citations"], q["relevant"]))
+            for key, value in expected.items():
+                if abs(row[key] - value) > 1e-9:
+                    raise ValueError(f"Evaluation calculation mismatch: {key}")
+        if any(qids != set(labels) for qids in by_method.values()):
+            raise ValueError("Incomplete experiment questions")
+
+        if "methods" in provenance and set(by_method) != set(provenance["methods"]):
+            raise ValueError("Incomplete experiment methods")

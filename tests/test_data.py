@@ -34,3 +34,27 @@ def test_overlap_and_missing_evidence_fail():
     broken["supporting_facts"] = [["missing", 0]]
     with pytest.raises(ValueError, match="supporting"):
         prepare_hotpot([broken], [question(2)], count=1, size=4)
+
+
+def test_index_rejects_label_fields_even_with_valid_checksums(tmp_path):
+    from rag_lab.io import sha, write_json, write_jsonl
+    from rag_lab.retrieval import build_index
+
+    write_jsonl(
+        tmp_path / "corpus.jsonl", [{"id": "a", "title": "A", "text": "text", "answer": "leaked"}]
+    )
+    write_json(
+        tmp_path / "manifest.json",
+        {
+            "dataset": "fixture",
+            "scope": "fixture",
+            "files": {"corpus.jsonl": sha(tmp_path / "corpus.jsonl")},
+        },
+    )
+    with pytest.raises(ValueError, match="label leakage"):
+        build_index(
+            tmp_path,
+            tmp_path / "index",
+            tmp_path / "missing-models",
+            {"chunk_size": 256, "overlap": 32},
+        )

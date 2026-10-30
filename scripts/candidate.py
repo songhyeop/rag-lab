@@ -39,6 +39,9 @@ def validate_bundle(root: Path, run: dict) -> dict:
         or manifest["commit"] != run["head_sha"]
         or manifest["repository"] != REPO
         or manifest["platform"] != "linux/amd64"
+        or manifest.get("image_tag") != "rag-lab:" + run["head_sha"]
+        or not manifest.get("image_id", "").startswith("sha256:")
+        or len(manifest.get("image_id", "")) != 71
         or set(manifest["files"]) != FILES
     ):
         raise ValueError("Candidate provenance mismatch")

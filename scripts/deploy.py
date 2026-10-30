@@ -296,7 +296,21 @@ def main():
         RAG_INDEX_ZIP_SHA256=cfg["index_zip_sha256"],
         RAG_INDEX_VERSION=cfg["index_version"],
         RAG_CORS_ORIGIN=outputs["DistributionUrl"],
-        RAG_PRICE_JSON=json.dumps(read_json(Path(cfg["price_file"]))),
+        RAG_PRICE_JSON=json.dumps(
+            {
+                k: v
+                for k, v in read_json(Path(cfg["price_file"])).items()
+                if k
+                in {
+                    "model_id",
+                    "region",
+                    "verified_at",
+                    "source_url",
+                    "input_usd_per_million",
+                    "output_usd_per_million",
+                }
+            }
+        ),
     )
     lam.update_function_configuration(FunctionName=function, Environment={"Variables": env})
     wait_function(lam, function)

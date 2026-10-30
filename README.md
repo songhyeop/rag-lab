@@ -2,7 +2,7 @@
 
 공개 데이터에서 검색·청킹·근거 인용·지연·비용을 재현 가능하게 비교하는 실험실입니다. 영어 질의/답변과 한국어 UI를 사용합니다.
 
-- BM25 / BGE + FAISS / RRF Hybrid / ONNX reranker
+- BM25 / API embeddings + 영구 벡터 캐시 + FAISS / RRF Hybrid / ONNX reranker
 - SciFact 5,183문서와 HotpotQA 축소 코퍼스 20,000문서
 - 문서 단위 Recall·nDCG·MRR, Answer EM/F1·문서 인용 평가
 - Google 초대 로그인, DynamoDB 원자 예산, Bedrock Nova Lite
@@ -10,12 +10,11 @@
 
 ```sh
 uv sync --frozen --extra data
-uv run rag models
-uv run rag smoke-models
-uv run rag prepare scifact
-uv run rag index --data data/scifact --dest artifacts/scifact-256
-uv run rag evaluate --data data/scifact --index artifacts/scifact-256 --split train --dest results/scifact-train
+uv run pytest -q  # 모의 API 응답, 실제 임베딩 호출 없음
+uv run rag cache-info
 ```
+
+임베딩은 API 제공자를 명시적으로 고른 뒤 사용합니다. 기본은 호출 차단이며, 저장한 벡터로 색인을 다시 만들 때도 API를 호출하지 않습니다. [캐시 재사용·API 실행 계약](docs/EMBEDDING_CACHE.md)을 먼저 읽으세요.
 
 Python 3.12, uv, Node 22 이상이 필요합니다. 데이터·모델·계정 설정은 저장소에 포함하지 않습니다. 실제 생성에는 Google 인증·공유 DynamoDB 예산·검증한 시드니 단가가 필요합니다.
 

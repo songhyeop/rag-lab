@@ -26,11 +26,18 @@ def evaluate(
     dest: Path,
     generate: bool = False,
     subject: str = "",
+    allow_embedding_api: bool = False,
 ) -> None:
     if (dest / "results.jsonl").exists():
         raise ValueError("Results already exist; choose a new run destination")
     load_started = time.perf_counter()
-    engine = SearchEngine(index, models)
+    engine = SearchEngine(
+        index,
+        models,
+        offline=not allow_embedding_api,
+        allow_api=allow_embedding_api,
+        persist_queries=True,
+    )
     engine_load_ms = (time.perf_counter() - load_started) * 1000
     manifest = read_json(data / "manifest.json")
     if engine.manifest["dataset_manifest_sha256"] != sha(data / "manifest.json"):

@@ -10,7 +10,10 @@ from scripts.deploy import smoke, update_origin
 p = argparse.ArgumentParser()
 p.add_argument("--release", type=Path, required=True)
 p.add_argument("--token-env", default="RAG_SMOKE_GOOGLE_TOKEN")
+p.add_argument("--allow-embedding-api", action="store_true")
 args = p.parse_args()
+if not args.allow_embedding_api:
+    raise ValueError("Rollback search verification requires explicit --allow-embedding-api")
 release = read_json(args.release)
 session = boto3.Session(region_name="ap-southeast-2")
 if session.client("sts").get_caller_identity()["Account"] != release["account"]:

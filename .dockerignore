@@ -1,0 +1,13 @@
+**
+!pyproject.toml
+!uv.lock
+!.python-version
+!src/**
+!configs/default.json
+!configs/models.lock.json
+!tests/fixtures/**
+!THIRD_PARTY_NOTICES.md
+
+!LICENSE
+!licenses/**
+!docs/reports/**

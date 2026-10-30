@@ -1,0 +1,15 @@
+{
+  "expected_account": "REPLACE_LOCALLY",
+  "region": "ap-southeast-2",
+  "stack": "rag-lab",
+  "repository_uri": "REPLACE_LOCALLY.dkr.ecr.ap-southeast-2.amazonaws.com/rag-lab",
+  "google_client_id": "",
+  "invited_emails": [],
+  "index_version": "",
+  "index_bucket": "",
+  "index_key": "",
+  "index_s3_version": "",
+  "index_zip_sha256": "",
+  "price_file": "configs/pricing.local.json",
+  "smoke_token_env": "RAG_SMOKE_GOOGLE_TOKEN"
+}

@@ -1,0 +1,50 @@
+name: Deployment candidate
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: candidate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  candidate:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '3.12'}
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with: {version: '0.13.6'}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - run: uv sync --frozen
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - name: Build Linux x86_64 candidate
+        run: docker build --platform linux/amd64 --tag "rag-lab:$GITHUB_SHA" .
+      - name: Real ONNX retrieval smoke
+        run: docker run --rm --read-only --tmpfs /tmp:rw,size=1g --platform linux/amd64 --entrypoint /var/task/.venv/bin/rag "rag-lab:$GITHUB_SHA" smoke-models
+      - name: Lambda runtime health and authentication smoke
+        run: |
+          docker run -d --read-only --tmpfs /tmp:rw,size=1g --name api -p 9000:8080 "rag-lab:$GITHUB_SHA"
+          uv run python -m scripts.container_smoke
+          docker stop api
+      - name: Package exact verified bytes
+        run: |
+          mkdir -p artifacts/candidate
+          docker image inspect "rag-lab:$GITHUB_SHA" --format '{{.Id}}' > artifacts/image-id.txt
+          docker save "rag-lab:$GITHUB_SHA" | gzip > artifacts/candidate/image.tar.gz
+          tar -czf artifacts/candidate/frontend.tar.gz -C frontend/dist .
+          uv run python -m scripts.package_candidate
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: candidate
+          path: artifacts/candidate/
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "dataset": "self-authored-fixture",
+  "scope": "fixture-not-benchmark",
+  "files": {
+    "labels.train.jsonl": "ec1fd5172c9d9b9622d9ff2855b9e05b4154c2dbfe035874f6f6dfc8563338e8",
+    "corpus.jsonl": "1c7d41944c7d0e52f1e10a64edbf7baddc7aedb1b105c0cbab76b6631ef0f951"
+  }
+}
